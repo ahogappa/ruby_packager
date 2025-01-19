@@ -12,7 +12,8 @@
     "string.h": "c",
     "error.h": "c",
     "stdbool.h": "c",
-    "*.rbinc": "c"
+    "*.rbinc": "c",
+    "random": "c"
   },
   "[ruby]": {
     "editor.defaultFormatter": "Shopify.ruby-lsp"

@@ -1,11 +1,9 @@
 #include <ruby.h>
-#include <string.h>
 
-#define RUBY_DEBUG_ENV 1
-
-extern char *get_patch_require(void);
+extern char *get_kompo_patch(void);
 extern void ruby_init_ext(const char *name, void (*init)(void));
-extern void Init_fs(void);
+extern void Init_kompo_fs(void);
+extern char *get_start_file(void);
 extern char *get_start_file_name(void);
 <% exts.each do |(_, func)| %>
 extern void <%= func %>(void);
@@ -19,21 +17,32 @@ void Init_gems(void)
 
 int main(int argc, char **argv)
 {
-  int c = 3;
+  int c = argc + 1;
+  const char *argv2[c];
 
-  // HACK: argv[0] is rewritten and reused by setproctitle()
-  argv[1] = "-e";
-  argv[2] = get_patch_require();
+  argv2[0] = argv[0];
+  // argv2[1] = "-r/workspaces/ruby_packager/bundle/bundler/setup.rb";
+  argv2[1] = "./sample/dir/test1.rb";
+  for (int i = 1; i < argc; i++) {
+    argv2[i + 1] = argv[i];
+  }
+  <%# argv2[2] = "-e";
+  argv2[3] = get_start_file();
+  for (int i = 1; i < argc; i++) {
+    argv2[i + 3] = argv[i];
+  } %>
+
+  get_start_file();
 
   ruby_sysinit(&c, &argv);
 
   RUBY_INIT_STACK;
   ruby_init();
 
-  Init_fs();
+  Init_kompo_fs();
   Init_gems();
 
-  void *node = ruby_options(c, argv);
+  void *node = ruby_options(c, argv2);
 
   // set $0
   ruby_script(get_start_file_name());

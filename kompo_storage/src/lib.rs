@@ -1,0 +1,426 @@
+use fxhash::FxHasher;
+use std::collections::HashMap;
+use std::ffi::OsStr;
+use std::ffi::OsString;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::io::Read;
+use std::os::unix::ffi::OsStrExt;
+use std::rc::Rc;
+use std::vec::IntoIter;
+use trie_rs::map::Trie;
+use trie_rs::map::TrieBuilder;
+
+#[derive(Debug, PartialEq)]
+enum FileType<'a> {
+    File {
+        file: &'a [u8],
+        offset: u64,
+        inode: u64,
+    },
+    Directory {
+        inode: u64,
+        // entries: Vec<Vec<OsString>>,
+    },
+}
+
+#[derive(Debug)]
+pub struct FsDir {
+    fd: i32,
+    offset: u64,
+}
+
+#[derive(Debug)]
+pub struct Fs<'a> {
+    trie: Trie<&'a OsStr, &'a [u8]>,
+    fd_map: HashMap<i32, FileType<'a>>,
+}
+
+impl<'a> Fs<'a> {
+    const DEV: libc::dev_t = libc::makedev(2222, 0); // create fake device number. TODO: get unused device number dynamically.
+
+    pub fn new(builder: TrieBuilder<&'static OsStr, &'static [u8]>) -> Self {
+        Self {
+            trie: builder.build(),
+            fd_map: HashMap::new(),
+        }
+    }
+
+    pub fn entries(&self) {
+        let hoge: Vec<(OsString, &&[u8])> = self.trie.iter().collect();
+        dbg!(hoge);
+        ()
+    }
+
+    fn get_inode_from_path(&self, path: &Vec<&OsStr>) -> u64 {
+        let mut hasher = FxHasher::default();
+        path.hash(&mut hasher);
+
+        hasher.finish()
+    }
+
+    fn get_file_type_from_path(&self, path: &Vec<&OsStr>) -> Option<FileType<'a>> {
+        if let Some(file) = self.trie.exact_match(&path) {
+            let inode = self.get_inode_from_path(path);
+
+            return Some(FileType::File {
+                file,
+                offset: 0,
+                inode,
+            });
+        }
+
+        let depth = path.len();
+
+        let result: Vec<_> = self
+            .trie
+            .predictive_search(&path)
+            .filter(|(p, _): &(Vec<&OsStr>, _)| p.len() >= depth + 1)
+            .map(|(path, _): (Vec<&OsStr>, _)| {
+                path.iter()
+                    .map(|&s| s.to_os_string())
+                    .collect::<Vec<OsString>>()
+            })
+            .collect::<Vec<Vec<OsString>>>();
+
+        if result.len() > 0 {
+            dbg!(&path);
+            let inode = self.get_inode_from_path(path);
+
+            return Some(FileType::Directory {
+                inode,
+                // entries: result,
+            });
+        }
+
+        None
+    }
+
+    pub fn is_exists_dir(&self, path: &Vec<&OsStr>) -> bool {
+        match self.get_file_type_from_path(path) {
+            Some(FileType::Directory { .. }) => true,
+            _ => false,
+        }
+    }
+
+    fn get_stat_from_file_type(&self, file_type: &FileType) -> libc::stat {
+        let layout = std::alloc::Layout::new::<libc::stat>();
+        let stat = unsafe { std::alloc::alloc(layout) as *mut libc::stat };
+
+        unsafe {
+            match file_type {
+                FileType::File {
+                    file,
+                    offset: _,
+                    inode,
+                } => {
+                    (*stat).st_dev = Self::DEV;
+                    (*stat).st_ino = *inode;
+                    (*stat).st_mode = libc::S_IFREG // 444
+                                    | libc::S_IRUSR
+                                    | libc::S_IRGRP
+                                    | libc::S_IROTH;
+                    (*stat).st_nlink = 1;
+                    (*stat).st_uid = libc::getuid();
+                    (*stat).st_gid = libc::getgid();
+                    (*stat).st_rdev = 0;
+                    (*stat).st_size = file.len() as _;
+                    (*stat).st_blksize = 4096;
+                    (*stat).st_blocks = (file.len().div_ceil(512).div_ceil(8) * 8) as i64;
+                    (*stat).st_atime = 0;
+                    (*stat).st_atime_nsec = 0;
+                    (*stat).st_mtime = 0;
+                    (*stat).st_mtime_nsec = 0;
+                    (*stat).st_ctime = 0;
+                    (*stat).st_ctime_nsec = 0;
+
+                    *stat
+                }
+                FileType::Directory { inode, .. } => {
+                    (*stat).st_dev = Self::DEV;
+                    (*stat).st_ino = *inode;
+                    (*stat).st_mode = libc::S_IFDIR // 555
+                                    | libc::S_IXUSR
+                                    | libc::S_IRUSR
+                                    | libc::S_IXGRP
+                                    | libc::S_IRGRP
+                                    | libc::S_IXOTH
+                                    | libc::S_IROTH;
+                    (*stat).st_nlink = 1;
+                    (*stat).st_uid = libc::getuid();
+                    (*stat).st_gid = libc::getgid();
+                    (*stat).st_rdev = 0;
+                    (*stat).st_size = 1;
+                    (*stat).st_blksize = 4096;
+                    (*stat).st_blocks = 0;
+                    (*stat).st_atime = 0;
+                    (*stat).st_atime_nsec = 0;
+                    (*stat).st_mtime = 0;
+                    (*stat).st_mtime_nsec = 0;
+                    (*stat).st_ctime = 0;
+                    (*stat).st_ctime_nsec = 0;
+
+                    *stat
+                }
+            }
+        }
+    }
+
+    pub fn open(&mut self, path: &Vec<&OsStr>) -> Option<i32> {
+        match self.get_file_type_from_path(path) {
+            Some(file_type) => {
+                let fd = unsafe { libc::dup(0) };
+
+                self.fd_map.insert(fd, file_type);
+
+                Some(fd)
+            }
+            None => None,
+        }
+    }
+
+    // TODO: working directory
+    pub fn open_at(&mut self, path: &Vec<&OsStr>) -> Option<i32> {
+        match self.get_file_type_from_path(path) {
+            Some(file_type) => match file_type {
+                FileType::File { .. } => {
+                    let fd = unsafe { libc::dup(0) };
+
+                    self.fd_map.insert(fd, file_type);
+
+                    Some(fd)
+                }
+                FileType::Directory { .. } => {
+                    let fd = unsafe { libc::dup(0) };
+
+                    self.fd_map.insert(fd, file_type);
+
+                    Some(fd)
+                }
+            },
+            None => None,
+        }
+    }
+
+    pub fn read(&mut self, fd: i32, buf: &mut [u8]) -> Option<isize> {
+        match self.fd_map.get_mut(&fd) {
+            Some(file_type) => match file_type {
+                FileType::File { file, offset, .. } => {
+                    if *offset == file.len() as u64 {
+                        return Some(0);
+                    }
+
+                    let read_size = (file.len() - *offset as usize).min(buf.len());
+                    buf[..read_size]
+                        .copy_from_slice(&file[*offset as usize..*offset as usize + read_size]);
+
+                    *offset += read_size as u64;
+
+                    Some(read_size as isize)
+                }
+                FileType::Directory { .. } => todo!(),
+            },
+            None => None,
+        }
+    }
+
+    pub fn close(&mut self, fd: i32) -> Option<i32> {
+        self.fd_map.remove(&fd);
+
+        Some(0)
+    }
+
+    pub fn stat(&self, path: &Vec<&OsStr>, stat: *mut libc::stat) -> Option<i32> {
+        match self.get_file_type_from_path(path) {
+            Some(ref file_type) => {
+                unsafe { *stat = self.get_stat_from_file_type(file_type) };
+
+                Some(0)
+            }
+            None => None,
+        }
+    }
+
+    pub fn fstat(&self, fd: i32, stat: *mut libc::stat) -> Option<i32> {
+        match self.fd_map.get(&fd) {
+            Some(file_type) => {
+                unsafe { *stat = self.get_stat_from_file_type(file_type) };
+
+                Some(0)
+            }
+            None => None,
+        }
+    }
+
+    pub fn file_read(&self, path: &Vec<&OsStr>) -> Option<*const u8> {
+        let file_type = self
+            .get_file_type_from_path(path)
+            .expect(format!("not found path: {:?}", path).as_str());
+
+        match file_type {
+            FileType::File { file, .. } => Some(file.as_ptr()),
+            _ => None,
+        }
+    }
+
+    pub fn fdopendir(&self, fd: i32) -> Option<FsDir> {
+        match self.fd_map.get(&fd) {
+            Some(FileType::Directory { .. }) => Some(FsDir { fd, offset: 0 }),
+            _ => None,
+        }
+    }
+
+    pub fn readdir(&self, dir: &mut FsDir) -> Option<libc::dirent> {
+        match self.fd_map.get(&dir.fd) {
+            // Some(FileType::Directory {  .. }) => {
+            //     if dir.offset >= entries.len() as u64 {
+            //         return None;
+            //     }
+            //     let full_path = &entries[dir.offset as usize];
+            //     let full_path = full_path
+            //         .iter()
+            //         .map(|s| s.as_os_str())
+            //         .collect::<Vec<&OsStr>>();
+
+            //     let file_type = match self.get_file_type_from_path(&full_path) {
+            //         Some(t) => match t {
+            //             FileType::File { .. } => libc::DT_REG,
+            //             FileType::Directory { .. } => libc::DT_DIR,
+            //         },
+            //         None => unreachable!(),
+            //     };
+            //     let inode = self.get_inode_from_path(&full_path);
+            //     let mut buf = [0; 256];
+            //     full_path
+            //         .last()
+            //         .unwrap()
+            //         .as_bytes()
+            //         .take(255)
+            //         .read(&mut buf)
+            //         .unwrap();
+
+            //     dir.offset += 1;
+
+            //     Some(libc::dirent {
+            //         d_ino: inode,
+            //         d_off: 0,    // TODO
+            //         d_reclen: 0, // TODO
+            //         d_type: file_type,
+            //         d_name: buf,
+            //     })
+            // }
+            Some(_) => None,
+            _ => None,
+        }
+    }
+
+    pub fn closedir(&mut self, dir: &FsDir) -> Option<i32> {
+        self.fd_map.remove(&dir.fd);
+
+        Some(0)
+    }
+}
+
+impl<'a> Drop for Fs<'a> {
+    fn drop(&mut self) {
+        for fd in self.fd_map.keys() {
+            unsafe { libc::close(*fd) };
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_storage() {
+        let mut builder: TrieBuilder<&OsStr, &[u8]> = TrieBuilder::new();
+        let ls = vec!["usr", "bin", "ls"]
+            .into_iter()
+            .map(OsStr::new)
+            .collect::<Vec<_>>();
+        let cat = vec!["usr", "bin", "cat"]
+            .into_iter()
+            .map(OsStr::new)
+            .collect::<Vec<_>>();
+        let hoge = vec!["usr", "bin", "hoge", "fuga"]
+            .into_iter()
+            .map(OsStr::new)
+            .collect::<Vec<_>>();
+        let fuga = vec!["usr", "bin", "fuga"]
+            .into_iter()
+            .map(OsStr::new)
+            .collect::<Vec<_>>();
+
+        builder.push(&ls, &[1, 2, 3]);
+        builder.push(&cat, &[4, 5, 6]);
+        builder.push(&hoge, &[7, 8, 9]);
+        builder.push(&fuga, &[10, 11, 12]);
+
+        let fs = Fs::new(builder);
+
+        fs.entries();
+
+        let mut hasher = FxHasher::default();
+        ls.hash(&mut hasher);
+
+        assert_eq!(
+            fs.get_file_type_from_path(&ls),
+            Some(FileType::File {
+                file: &[1, 2, 3],
+                offset: 0,
+                inode: hasher.finish()
+            })
+        );
+
+        let mut hasher = FxHasher::default();
+        let search_path = vec!["usr", "bin"]
+            .into_iter()
+            .map(OsStr::new)
+            .collect::<Vec<_>>();
+
+        search_path.clone().hash(&mut hasher);
+
+        assert_eq!(
+            fs.get_file_type_from_path(&search_path.clone()),
+            Some(FileType::Directory {
+                inode: hasher.finish(),
+                // entries: vec![
+                //     vec!["usr", "bin", "cat"]
+                //         .into_iter()
+                //         .map(OsString::from)
+                //         .collect(),
+                //     vec!["usr", "bin", "fuga"]
+                //         .into_iter()
+                //         .map(OsString::from)
+                //         .collect(),
+                //     vec!["usr", "bin", "ls"]
+                //         .into_iter()
+                //         .map(OsString::from)
+                //         .collect(),
+                // ]
+            })
+        );
+
+        let search_path = "usr/bin/cat"
+            .split('/')
+            .map(OsStr::new)
+            .collect::<Vec<&OsStr>>();
+        let mut hasher = FxHasher::default();
+        vec!["usr", "bin", "cat"]
+            .iter()
+            .map(OsStr::new)
+            .collect::<Vec<_>>()
+            .hash(&mut hasher);
+
+        assert_eq!(
+            fs.get_file_type_from_path(&search_path),
+            Some(FileType::File {
+                file: &[4, 5, 6],
+                offset: 0,
+                inode: hasher.finish()
+            })
+        );
+    }
+}

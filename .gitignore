@@ -1,6 +1,7 @@
 /target
-/dest_dir
+/dest_dir*
 *.o
+*.c
 firedbg
 bin
 sample.csv
@@ -9,3 +10,6 @@ exts/
 main.c
 .bundle
 *.db
+test*
+/test_rails*
+hoge*

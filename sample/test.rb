@@ -1,45 +1,41 @@
-p 'test'
+# require "json"
 
-require_relative 'hello'
+# # JSON文字列をRubyのオブジェクトに変換する
+# json_str = '{"name": "Ruby", "age": 30}'
+# p JSON.parse(json_str)
 
-require "json"
+# # RubyのオブジェクトをJSON文字列に変換する
+# data = {"name" => "Ruby", "age" => 30}
+# p JSON.dump(data)
 
-# JSON文字列をRubyのオブジェクトに変換する
-json_str = '{"name": "Ruby", "age": 30}'
-p JSON.parse(json_str)
+# require 'sqlite3'
 
-# RubyのオブジェクトをJSON文字列に変換する
-data = {"name" => "Ruby", "age" => 30}
-p JSON.dump(data)
+# File.delete("test.db") if File.exist?("test.db")
 
-require 'sqlite3'
+# db = SQLite3::Database.new "test.db"
 
-File.delete("test.db") if File.exist?("test.db")
+# # Create a table
+# rows = db.execute <<-SQL
+#   create table numbers (
+#     name varchar(30),
+#     val int
+#   );
+# SQL
 
-db = SQLite3::Database.new "test.db"
+# {
+#   "one" => 1,
+#   "two" => 2,
+# }.each do |pair|
+#   db.execute "insert into numbers values ( ?, ? )", pair
+# end
 
-# Create a table
-rows = db.execute <<-SQL
-  create table numbers (
-    name varchar(30),
-    val int
-  );
-SQL
+# require 'sinatra'
 
-{
-  "one" => 1,
-  "two" => 2,
-}.each do |pair|
-  db.execute "insert into numbers values ( ?, ? )", pair
-end
+# set :bind, '0.0.0.0'
 
-require 'sinatra'
-
-set :bind, '0.0.0.0'
-
-get '/' do
-  rows = db.execute <<-SQL
-    select * from numbers;
-SQL
-rows.to_s
-end
+# get '/' do
+#   rows = db.execute <<-SQL
+#     select * from numbers;
+# SQL
+# rows.to_s
+# end

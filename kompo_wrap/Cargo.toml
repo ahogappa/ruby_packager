@@ -1,0 +1,12 @@
+[package]
+name = "kompo_wrap"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2.161"
+errno = "*"
+kompo_fs = { path = "../kompo_fs" }
+
+[lib]
+crate-type = ["staticlib"]

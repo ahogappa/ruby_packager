@@ -78,6 +78,12 @@
         "sample/",
         "--start=./sample/test.rb"
       ]
-    }
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "rtld bin",
+      "program": "${workspaceFolder}/a.out",
+    },
   ]
 }
