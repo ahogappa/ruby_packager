@@ -30,7 +30,7 @@ args.each do |arg_path|
       Find.find(expand_path) do |path|
         Find.prune if path.end_with?('.git') || path.end_with?('/ports') || path.end_with?('/logs') || path.end_with?('/tmp') || path.end_with?('/extensions') || path.end_with?('/test') || path.end_with?('/spec') || path.end_with?('.github') || path.end_with?('/docs') || path.end_with?('/exe')
         next if path.end_with?('.so') || path.end_with?('.c') || path.end_with?('.h') || path.end_with?('.o') || path.end_with?('.java') || path.end_with?('.jar') || path.end_with?('.gz') || path.end_with?('.dat') || path.end_with?('.sqlite3') || path.end_with?('.exe')
-        next if path.end_with?('.gem') || path.end_with?('.png') || path.end_with?('.jpg') || path.end_with?('.jpeg') || path.end_with?('.gif') || path.end_with?('.bmp') || path.end_with?('.ico') || path.end_with?('.svg') || path.end_with?('.webp') || path.end_with?('.ttf') || path.end_with?('.data') || path.end_with?('.gemspec')
+        next if path.end_with?('.gem') || path.end_with?('.png') || path.end_with?('.jpg') || path.end_with?('.jpeg') || path.end_with?('.gif') || path.end_with?('.bmp') || path.end_with?('.ico') || path.end_with?('.svg') || path.end_with?('.webp') || path.end_with?('.ttf') || path.end_with?('.data')
         next if path.end_with?('selenium-manager')
         next if File.directory?(path)
 

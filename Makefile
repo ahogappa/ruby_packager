@@ -48,16 +48,16 @@ a.out: /workspaces/ruby_packager/kompo_storage/src/lib.rs /workspaces/ruby_packa
 		exts/nio4r/*.o exts/sqlite3/*.o exts/puma_http11/*.o \
 		exts/websocket-driver/websocket_mask.o exts/nokogiri/*.o exts/cparse/cparse.o exts/console/console.o exts/bigdecimal/*.o exts/debug/*.o exts/parser/*.o exts/bootsnap/*.o exts/msgpack/*.o exts/generator/*.o exts/mri/*.o exts/skiptrace/*.o \
 		exts/ed25519_ref10/ed25519_ref10.o exts/ed25519_ref10/fe.o exts/ed25519_ref10/ge.o exts/ed25519_ref10/keypair.o exts/ed25519_ref10/open.o exts/ed25519_ref10/sc_muladd.o exts/ed25519_ref10/sc_reduce.o exts/ed25519_ref10/sign.o exts/ed25519_ref10/verify.o \
-		/workspaces/ruby_packager/test_rails_tmp/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ports/aarch64-linux/libxslt/1.1.42/lib/libexslt.a \
-		/workspaces/ruby_packager/test_rails_tmp/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ports/aarch64-linux/libxml2/2.13.5/lib/libxml2.a \
-		/workspaces/ruby_packager/test_rails_tmp/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ports/aarch64-linux/libxslt/1.1.42/lib/libxslt.a \
-		/workspaces/ruby_packager/test_rails_tmp/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ports/aarch64-linux/libxml2/2.13.5/lib/libxml2.a \
-	  /workspaces/ruby_packager/test_rails_tmp/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ext/nokogiri/ports/aarch64-linux/libgumbo/1.0.0-nokogiri/lib/libgumbo.a \
-		/workspaces/ruby_packager/test_rails_tmp/bundle/ruby/3.5.0+0/gems/sqlite3-2.5.0/ports/aarch64-linux-gnu/sqlite3/3.47.2/lib/libsqlite3.a \
+		/workspaces/ruby_packager/test_rails/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ports/aarch64-linux/libxslt/1.1.42/lib/libexslt.a \
+		/workspaces/ruby_packager/test_rails/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ports/aarch64-linux/libxml2/2.13.5/lib/libxml2.a \
+		/workspaces/ruby_packager/test_rails/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ports/aarch64-linux/libxslt/1.1.42/lib/libxslt.a \
+		/workspaces/ruby_packager/test_rails/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ports/aarch64-linux/libxml2/2.13.5/lib/libxml2.a \
+	  /workspaces/ruby_packager/test_rails/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ext/nokogiri/ports/aarch64-linux/libgumbo/1.0.0-nokogiri/lib/libgumbo.a \
+		/workspaces/ruby_packager/test_rails/bundle/ruby/3.5.0+0/gems/sqlite3-2.5.0/ports/aarch64-linux-gnu/sqlite3/3.47.2/lib/libsqlite3.a \
 		-lruby-static -lrt -lgmp -lcrypt -lm -ldl -lffi -lssl -lcrypto -lyaml -lz -lkompo_fs -lkompo_wrap -lpthread -lc
-# dest_dir/lib/ruby/3.5.0+0 test_rails
+# test_rails dest_dir/lib/ruby/3.5.0+0 dest_dir/lib/ruby/gems/3.5.0+0/specifications
 fs.c: make_fs_data.rb sample/test.rb sample/dir/test1.rb
-		ruby make_fs_data.rb ./main.rb main.rb dest_dir/lib/ruby/3.5.0+0 test_rails
+		ruby make_fs_data.rb ./main.rb main.rb
 
 test: a.out
 	./a.out -e"p File.read('./main.c');p Dir.getwd; p Dir.open('dest_dir'){_1.fileno;_1.each{|d|p _1.tell};_1.seek(0)};Dir.delete('hoge');Dir.mkdir('hoge');p Dir.exist?('hoge');File.delete('fuga');File.symlink('hoge', 'fuga');File.readlink('fuga');Dir.chdir('hoge');exec('ls');"

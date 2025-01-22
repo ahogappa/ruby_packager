@@ -20,13 +20,13 @@ enum FileType<'a> {
     },
     Directory {
         inode: u64,
-        // entries: Vec<Vec<OsString>>,
+        entries: Vec<Vec<OsString>>,
     },
 }
 
 #[derive(Debug)]
 pub struct FsDir {
-    fd: i32,
+    pub fd: i32,
     offset: u64,
 }
 
@@ -89,7 +89,7 @@ impl<'a> Fs<'a> {
 
             return Some(FileType::Directory {
                 inode,
-                // entries: result,
+                entries: result,
             });
         }
 
@@ -227,7 +227,7 @@ impl<'a> Fs<'a> {
     pub fn close(&mut self, fd: i32) -> Option<i32> {
         self.fd_map.remove(&fd);
 
-        Some(0)
+        Some(fd)
     }
 
     pub fn stat(&self, path: &Vec<&OsStr>, stat: *mut libc::stat) -> Option<i32> {
@@ -270,54 +270,50 @@ impl<'a> Fs<'a> {
         }
     }
 
-    pub fn readdir(&self, dir: &mut FsDir) -> Option<libc::dirent> {
+    pub fn readdir(&self, dir: &mut FsDir) -> Option<*mut libc::dirent> {
         match self.fd_map.get(&dir.fd) {
-            // Some(FileType::Directory {  .. }) => {
-            //     if dir.offset >= entries.len() as u64 {
-            //         return None;
-            //     }
-            //     let full_path = &entries[dir.offset as usize];
-            //     let full_path = full_path
-            //         .iter()
-            //         .map(|s| s.as_os_str())
-            //         .collect::<Vec<&OsStr>>();
+            Some(FileType::Directory { entries, .. }) => {
+                if dir.offset >= entries.len() as u64 {
+                    return Some(std::ptr::null_mut());
+                }
+                let full_path = &entries[dir.offset as usize];
+                let full_path = full_path
+                    .iter()
+                    .map(|s| s.as_os_str())
+                    .collect::<Vec<&OsStr>>();
 
-            //     let file_type = match self.get_file_type_from_path(&full_path) {
-            //         Some(t) => match t {
-            //             FileType::File { .. } => libc::DT_REG,
-            //             FileType::Directory { .. } => libc::DT_DIR,
-            //         },
-            //         None => unreachable!(),
-            //     };
-            //     let inode = self.get_inode_from_path(&full_path);
-            //     let mut buf = [0; 256];
-            //     full_path
-            //         .last()
-            //         .unwrap()
-            //         .as_bytes()
-            //         .take(255)
-            //         .read(&mut buf)
-            //         .unwrap();
+                let file_type = match self.get_file_type_from_path(&full_path) {
+                    Some(t) => match t {
+                        FileType::File { .. } => libc::DT_REG,
+                        FileType::Directory { .. } => libc::DT_DIR,
+                    },
+                    None => unreachable!(),
+                };
+                let inode = self.get_inode_from_path(&full_path);
+                let mut buf = [0; 256];
+                full_path
+                    .last()
+                    .unwrap()
+                    .as_bytes()
+                    .take(255)
+                    .read(&mut buf)
+                    .unwrap();
 
-            //     dir.offset += 1;
+                dir.offset += 1;
 
-            //     Some(libc::dirent {
-            //         d_ino: inode,
-            //         d_off: 0,    // TODO
-            //         d_reclen: 0, // TODO
-            //         d_type: file_type,
-            //         d_name: buf,
-            //     })
-            // }
-            Some(_) => None,
+                let dirent = libc::dirent {
+                    d_ino: inode,
+                    d_off: 0,    // TODO
+                    d_reclen: 0, // TODO
+                    d_type: file_type,
+                    d_name: buf,
+                };
+
+                let dirent = Box::new(dirent);
+                Some(Box::into_raw(dirent) as *mut libc::dirent)
+            }
             _ => None,
         }
-    }
-
-    pub fn closedir(&mut self, dir: &FsDir) -> Option<i32> {
-        self.fd_map.remove(&dir.fd);
-
-        Some(0)
     }
 }
 
@@ -386,20 +382,20 @@ mod test {
             fs.get_file_type_from_path(&search_path.clone()),
             Some(FileType::Directory {
                 inode: hasher.finish(),
-                // entries: vec![
-                //     vec!["usr", "bin", "cat"]
-                //         .into_iter()
-                //         .map(OsString::from)
-                //         .collect(),
-                //     vec!["usr", "bin", "fuga"]
-                //         .into_iter()
-                //         .map(OsString::from)
-                //         .collect(),
-                //     vec!["usr", "bin", "ls"]
-                //         .into_iter()
-                //         .map(OsString::from)
-                //         .collect(),
-                // ]
+                entries: vec![
+                    vec!["usr", "bin", "cat"]
+                        .into_iter()
+                        .map(OsString::from)
+                        .collect(),
+                    vec!["usr", "bin", "fuga"]
+                        .into_iter()
+                        .map(OsString::from)
+                        .collect(),
+                    vec!["usr", "bin", "ls"]
+                        .into_iter()
+                        .map(OsString::from)
+                        .collect(),
+                ]
             })
         );
 

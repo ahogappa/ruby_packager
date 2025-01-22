@@ -630,7 +630,7 @@ unsafe extern "C-unwind" fn fdopendir(fd: libc::c_int) -> *mut libc::DIR {
             .expect("not found thread id in THREAD_CONTEXT")
             .clone()
     };
-    if false {
+    if bool {
         if let Some(dir) = fdopendir_from_fs(fd) {
             dir
         } else {
@@ -664,7 +664,7 @@ unsafe extern "C-unwind" fn readdir(dirp: *mut libc::DIR) -> *mut libc::dirent {
             .clone()
     };
     // println!("rust readdir: {:?}, {}", dirp, bool);
-    if false {
+    if bool {
         if let Some(dirent) = readdir_from_fs(dirp) {
             dirent
         } else {
@@ -787,9 +787,10 @@ unsafe extern "C-unwind" fn closedir(dirp: *mut libc::DIR) -> libc::c_int {
             .expect("not found thread id in THREAD_CONTEXT")
             .clone()
     };
-    if false {
-        if let Some(ret) = closedir_from_fs(dirp) {
-            ret
+    if bool {
+        if let Some(fd) = closedir_from_fs(dirp) {
+            CLOSE_HANDLE(fd); // kompo_fs' inner fd made by dup(). so, close it.
+            0
         } else {
             errno::set_errno(errno::Errno(libc::EBADF));
             -1
@@ -834,7 +835,7 @@ unsafe extern "C-unwind" fn chdir(path: *const libc::c_char) -> libc::c_int {
     }
 }
 
-//closedir
+//readlink
 static READLINK_HANDLE: std::sync::LazyLock<
     unsafe extern "C-unwind" fn(
         path: *const libc::c_char,
