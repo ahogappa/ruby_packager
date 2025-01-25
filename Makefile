@@ -38,7 +38,7 @@ $(RUBY_LIB): $(RUBY_CONF)
 		$(MAKE) V=1 -C ruby -i install
 
 $(RUBY_CONF):
-		cd ruby && $(AUTOXXX) && ./configure optflags=-O0 --prefix=$(PWD)/dest_dir --disable-install-doc --disable-install-rdoc --disable-install-capi --with-static-linked-ext --with-ext=$(EXTS) --with-ruby-pc=ruby.pc
+		cd ruby && $(AUTOXXX) && ./configure optflags=-O0 --prefix=$(PWD)/dest_dir --disable-install-doc --disable-install-rdoc --disable-install-capi --with-static-linked-ext --with-ext=$(EXTS) --with-ruby-pc=ruby.pc --disable-rubygems --disable-hoge
 
 a.out: /workspaces/ruby_packager/kompo_storage/src/lib.rs /workspaces/ruby_packager/kompo_wrap/src/lib.rs /workspaces/ruby_packager/kompo_fs/**/*.rs $(RUBY_LIB) $(PWD)/bundle/bundler/setup.rb main.c fs.c
 		cargo build
@@ -55,9 +55,9 @@ a.out: /workspaces/ruby_packager/kompo_storage/src/lib.rs /workspaces/ruby_packa
 	  /workspaces/ruby_packager/test_rails/bundle/ruby/3.5.0+0/gems/nokogiri-1.18.1/ext/nokogiri/ports/aarch64-linux/libgumbo/1.0.0-nokogiri/lib/libgumbo.a \
 		/workspaces/ruby_packager/test_rails/bundle/ruby/3.5.0+0/gems/sqlite3-2.5.0/ports/aarch64-linux-gnu/sqlite3/3.47.2/lib/libsqlite3.a \
 		-lruby-static -lrt -lgmp -lcrypt -lm -ldl -lffi -lssl -lcrypto -lyaml -lz -lkompo_fs -lkompo_wrap -lpthread -lc
-# test_rails dest_dir/lib/ruby/3.5.0+0 dest_dir/lib/ruby/gems/3.5.0+0/specifications
-fs.c: make_fs_data.rb sample/test.rb sample/dir/test1.rb
-		ruby make_fs_data.rb ./main.rb main.rb
+# test_rails dest_dir/lib/ruby/3.5.0+0 dest_dir/lib/ruby/gems/3.5.0+0/specifications dest_dir/lib/ruby
+fs.c: make_fs_data.rb sample/test.rb sample/dir/test1.rb test_rails
+		ruby make_fs_data.rb ./main.rb main.rb test_rails dest_dir/lib/ruby
 
 test: a.out
 	./a.out -e"p File.read('./main.c');p Dir.getwd; p Dir.open('dest_dir'){_1.fileno;_1.each{|d|p _1.tell};_1.seek(0)};Dir.delete('hoge');Dir.mkdir('hoge');p Dir.exist?('hoge');File.delete('fuga');File.symlink('hoge', 'fuga');File.readlink('fuga');Dir.chdir('hoge');exec('ls');"

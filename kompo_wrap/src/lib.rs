@@ -80,8 +80,16 @@ unsafe extern "C-unwind" fn open(
             .expect("not found thread id in THREAD_CONTEXT")
             .clone()
     };
-    // if cstr_path.to_str().unwrap().contains("puma") {
-    // println!("rust open {}, bool: {}", cstr_path.to_str().unwrap(), bool);
+    // println!(
+    //     "global context: {}",
+    //     GLOBAL_CONTEXT.load(std::sync::atomic::Ordering::Relaxed)
+    // );
+    // // if cstr_path.to_str().unwrap().contains("puma") {
+    // println!(
+    //     "rust open {}, bool: {}",
+    //     CStr::from_ptr(path).to_str().unwrap(),
+    //     bool
+    // );
     // }
     if bool {
         if ALLOW_OPEN_PATTARN1 == oflag
@@ -276,6 +284,7 @@ unsafe extern "C-unwind" fn read(
         if let Some(result) = read_from_fs(fd, buf, count) {
             result
         } else {
+            // READ_HANDLE(fd, buf, count)
             errno::set_errno(errno::Errno(libc::EBADF));
             -1
         }
@@ -446,7 +455,7 @@ unsafe extern "C-unwind" fn lstat(path: *const libc::c_char, buf: *mut libc::sta
             .clone()
     };
     if bool {
-        if let Some(result) = stat_from_fs(path, buf) {
+        if let Some(result) = lstat_from_fs(path, buf) {
             result
         } else {
             errno::set_errno(errno::Errno(libc::EBADF));
@@ -602,9 +611,25 @@ static OPENDIR_HANDLE: std::sync::LazyLock<
 
 #[no_mangle]
 unsafe extern "C-unwind" fn opendir(dirname: *const libc::c_char) -> *mut libc::DIR {
-    println!("rust opendir: {:?}", CStr::from_ptr(dirname));
-
-    OPENDIR_HANDLE(dirname)
+    let binding = std::sync::Arc::clone(THREAD_CONTEXT.get_or_init(initialize_thread_context));
+    let bool = {
+        let binding = binding.read().expect("THREAD_CONTEXT is posioned");
+        binding
+            .get(&libc::pthread_self())
+            .expect("not found thread id in THREAD_CONTEXT")
+            .clone()
+    };
+    println!("rust opendir: {:?}, {}", CStr::from_ptr(dirname), bool);
+    if bool {
+        if let Some(dir) = opendir_from_fs(dirname) {
+            dir
+        } else {
+            errno::set_errno(errno::Errno(libc::EBADF));
+            std::ptr::null_mut()
+        }
+    } else {
+        OPENDIR_HANDLE(dirname)
+    }
 }
 
 //fdopendir
@@ -663,7 +688,7 @@ unsafe extern "C-unwind" fn readdir(dirp: *mut libc::DIR) -> *mut libc::dirent {
             .expect("not found thread id in THREAD_CONTEXT")
             .clone()
     };
-    // println!("rust readdir: {:?}, {}", dirp, bool);
+    println!("rust readdir: {:?}, {}", dirp, bool);
     if bool {
         if let Some(dirent) = readdir_from_fs(dirp) {
             dirent
@@ -707,7 +732,19 @@ static REWINDDIR_HANDLE: std::sync::LazyLock<unsafe extern "C-unwind" fn(dirp: *
 unsafe extern "C-unwind" fn rewinddir(dirp: *mut libc::DIR) {
     println!("rust rewinddir: {:?}", dirp);
 
-    REWINDDIR_HANDLE(dirp)
+    let binding = std::sync::Arc::clone(THREAD_CONTEXT.get_or_init(initialize_thread_context));
+    let bool = {
+        let binding = binding.read().expect("THREAD_CONTEXT is posioned");
+        binding
+            .get(&libc::pthread_self())
+            .expect("not found thread id in THREAD_CONTEXT")
+            .clone()
+    };
+    if bool {
+        rewinddir_from_fs(dirp)
+    } else {
+        REWINDDIR_HANDLE(dirp)
+    }
 }
 
 //seekdir

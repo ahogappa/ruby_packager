@@ -1,13 +1,12 @@
 use fxhash::FxHasher;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
-use std::rc::Rc;
-use std::vec::IntoIter;
 use trie_rs::map::Trie;
 use trie_rs::map::TrieBuilder;
 
@@ -59,9 +58,9 @@ impl<'a> Fs<'a> {
         hasher.finish()
     }
 
-    fn get_file_type_from_path(&self, path: &Vec<&OsStr>) -> Option<FileType<'a>> {
-        if let Some(file) = self.trie.exact_match(&path) {
-            let inode = self.get_inode_from_path(path);
+    fn get_file_type_from_path(&self, search_path: &Vec<&OsStr>) -> Option<FileType<'a>> {
+        if let Some(file) = self.trie.exact_match(&search_path) {
+            let inode = self.get_inode_from_path(search_path);
 
             return Some(FileType::File {
                 file,
@@ -70,22 +69,39 @@ impl<'a> Fs<'a> {
             });
         }
 
-        let depth = path.len();
+        let depth = search_path.len() + 1;
+        let mut uniq_file = HashSet::new();
 
         let result: Vec<_> = self
             .trie
-            .predictive_search(&path)
-            .filter(|(p, _): &(Vec<&OsStr>, _)| p.len() >= depth + 1)
-            .map(|(path, _): (Vec<&OsStr>, _)| {
-                path.iter()
-                    .map(|&s| s.to_os_string())
-                    .collect::<Vec<OsString>>()
+            .predictive_search(&search_path)
+            .filter_map(|(path, _): (Vec<&OsStr>, _)| {
+                if path.len() >= depth {
+                    let next_depth_path = path
+                        .iter()
+                        .take(depth)
+                        .map(|&s| s.to_os_string())
+                        .collect::<Vec<OsString>>();
+                    let mut hasher = FxHasher::default();
+                    next_depth_path.hash(&mut hasher);
+                    let id = hasher.finish();
+
+                    if uniq_file.contains(&id) {
+                        None
+                    } else {
+                        uniq_file.insert(id);
+
+                        Some(next_depth_path)
+                    }
+                } else {
+                    None
+                }
             })
             .collect::<Vec<Vec<OsString>>>();
 
         if result.len() > 0 {
-            dbg!(&path);
-            let inode = self.get_inode_from_path(path);
+            // dbg!(&search_path);
+            let inode = self.get_inode_from_path(search_path);
 
             return Some(FileType::Directory {
                 inode,
@@ -241,6 +257,10 @@ impl<'a> Fs<'a> {
         }
     }
 
+    pub fn lstat(&self, path: &Vec<&OsStr>, stat: *mut libc::stat) -> Option<i32> {
+        self.stat(path, stat)
+    }
+
     pub fn fstat(&self, fd: i32, stat: *mut libc::stat) -> Option<i32> {
         match self.fd_map.get(&fd) {
             Some(file_type) => {
@@ -291,6 +311,8 @@ impl<'a> Fs<'a> {
                 };
                 let inode = self.get_inode_from_path(&full_path);
                 let mut buf = [0; 256];
+
+                // dbg!(&full_path);
                 full_path
                     .last()
                     .unwrap()
@@ -314,6 +336,26 @@ impl<'a> Fs<'a> {
             }
             _ => None,
         }
+    }
+
+    pub fn closedir(&mut self, fd: i32) -> Option<i32> {
+        self.close(fd)
+    }
+
+    pub fn opendir(&mut self, path: &Vec<&OsStr>) -> Option<FsDir> {
+        match self.get_file_type_from_path(path) {
+            Some(file_type @ FileType::Directory { .. }) => {
+                let fd = unsafe { libc::dup(0) };
+                self.fd_map.insert(fd, file_type);
+
+                Some(FsDir { fd, offset: 0 })
+            }
+            _ => None,
+        }
+    }
+
+    pub fn rewinddir(&mut self, dir: &mut FsDir) {
+        dir.offset = 0;
     }
 }
 

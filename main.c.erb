@@ -2,6 +2,8 @@
 
 extern char *get_kompo_patch(void);
 extern void ruby_init_ext(const char *name, void (*init)(void));
+extern void context_on(void);
+extern void context_off(void);
 extern void Init_kompo_fs(void);
 extern char *get_start_file(void);
 extern char *get_start_file_name(void);

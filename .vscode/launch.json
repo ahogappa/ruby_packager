@@ -84,6 +84,9 @@
       "request": "launch",
       "name": "rtld bin",
       "program": "${workspaceFolder}/a.out",
+      "env": {
+        "RUBYLIB": "/workspaces/ruby_packager/dest_dir_tmp/lib/ruby/3.5.0+0:/workspaces/ruby_packager/dest_dir_tmp/lib/ruby/3.5.0+0/aarch64-linux",
+      }
     },
   ]
 }
