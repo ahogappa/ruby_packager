@@ -624,7 +624,7 @@ unsafe extern "C-unwind" fn opendir(dirname: *const libc::c_char) -> *mut libc::
         if let Some(dir) = opendir_from_fs(dirname) {
             dir
         } else {
-            errno::set_errno(errno::Errno(libc::EBADF));
+            errno::set_errno(errno::Errno(libc::ENOENT));
             std::ptr::null_mut()
         }
     } else {
