@@ -393,7 +393,7 @@ unsafe extern "C-unwind" fn stat(path: *const libc::c_char, buf: *mut libc::stat
         if let Some(result) = stat_from_fs(path, buf) {
             result
         } else {
-            errno::set_errno(errno::Errno(libc::EBADF));
+            errno::set_errno(errno::Errno(libc::ENOENT));
             -1
         }
     } else {
