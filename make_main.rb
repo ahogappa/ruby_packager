@@ -1,6 +1,9 @@
 require 'fileutils'
 require 'erb'
 
+# for nokogiri
+ENV['NOKOGIRI_USE_CANONICAL_GNOME_SOURCE'] = '1'
+
 exts=[]
 exts_libs=[]
 Dir.glob("test_rails/bundle/ruby/#{RbConfig::CONFIG['ruby_version']}/gems/**/extconf.rb").each do |makefile_dir|

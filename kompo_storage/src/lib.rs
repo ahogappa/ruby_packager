@@ -72,25 +72,22 @@ impl<'a> Fs<'a> {
         let depth = search_path.len() + 1;
         let mut uniq_file = HashSet::new();
 
-        let result: Vec<_> = self
+        let entries: Vec<_> = self
             .trie
             .predictive_search(&search_path)
             .filter_map(|(path, _): (Vec<&OsStr>, _)| {
                 if path.len() >= depth {
-                    let next_depth_path = path
-                        .iter()
-                        .take(depth)
-                        .map(|&s| s.to_os_string())
-                        .collect::<Vec<OsString>>();
-                    let mut hasher = FxHasher::default();
-                    next_depth_path.hash(&mut hasher);
-                    let id = hasher.finish();
+                    let id = self.get_inode_from_path(&path);
 
                     if uniq_file.contains(&id) {
                         None
                     } else {
                         uniq_file.insert(id);
-
+                        let next_depth_path = path
+                            .iter()
+                            .take(depth)
+                            .map(|&s| s.to_os_string())
+                            .collect::<Vec<OsString>>();
                         Some(next_depth_path)
                     }
                 } else {
@@ -99,20 +96,29 @@ impl<'a> Fs<'a> {
             })
             .collect::<Vec<Vec<OsString>>>();
 
-        if result.len() > 0 {
+        if entries.len() > 0 {
             // dbg!(&search_path);
             let inode = self.get_inode_from_path(search_path);
 
-            return Some(FileType::Directory {
-                inode,
-                entries: result,
-            });
+            return Some(FileType::Directory { inode, entries });
         }
 
         None
     }
 
-    pub fn is_exists_dir(&self, path: &Vec<&OsStr>) -> bool {
+    pub fn is_fd_exists(&self, fd: i32) -> bool {
+        self.fd_map.contains_key(&fd)
+    }
+
+    pub fn is_dir_exists(&self, dir: &Box<FsDir>) -> bool {
+        if self.is_fd_exists(dir.fd) {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_dir_exists_from_path(&self, path: &Vec<&OsStr>) -> bool {
         match self.get_file_type_from_path(path) {
             Some(FileType::Directory { .. }) => true,
             _ => false,
@@ -120,63 +126,59 @@ impl<'a> Fs<'a> {
     }
 
     fn get_stat_from_file_type(&self, file_type: &FileType) -> libc::stat {
-        let layout = std::alloc::Layout::new::<libc::stat>();
-        let stat = unsafe { std::alloc::alloc(layout) as *mut libc::stat };
+        let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+        let stat_ptr = stat.as_mut_ptr();
 
         unsafe {
             match file_type {
-                FileType::File {
-                    file,
-                    offset: _,
-                    inode,
-                } => {
-                    (*stat).st_dev = Self::DEV;
-                    (*stat).st_ino = *inode;
-                    (*stat).st_mode = libc::S_IFREG // 444
+                FileType::File { file, inode, .. } => {
+                    (*stat_ptr).st_dev = Self::DEV;
+                    (*stat_ptr).st_ino = *inode;
+                    (*stat_ptr).st_mode = libc::S_IFREG // 444
                                     | libc::S_IRUSR
                                     | libc::S_IRGRP
                                     | libc::S_IROTH;
-                    (*stat).st_nlink = 1;
-                    (*stat).st_uid = libc::getuid();
-                    (*stat).st_gid = libc::getgid();
-                    (*stat).st_rdev = 0;
-                    (*stat).st_size = file.len() as _;
-                    (*stat).st_blksize = 4096;
-                    (*stat).st_blocks = (file.len().div_ceil(512).div_ceil(8) * 8) as i64;
-                    (*stat).st_atime = 0;
-                    (*stat).st_atime_nsec = 0;
-                    (*stat).st_mtime = 0;
-                    (*stat).st_mtime_nsec = 0;
-                    (*stat).st_ctime = 0;
-                    (*stat).st_ctime_nsec = 0;
+                    (*stat_ptr).st_nlink = 1;
+                    (*stat_ptr).st_uid = libc::getuid();
+                    (*stat_ptr).st_gid = libc::getgid();
+                    (*stat_ptr).st_rdev = 0;
+                    (*stat_ptr).st_size = file.len() as _;
+                    (*stat_ptr).st_blksize = 4096;
+                    (*stat_ptr).st_blocks = (file.len().div_ceil(512).div_ceil(8) * 8) as i64;
+                    (*stat_ptr).st_atime = 0;
+                    (*stat_ptr).st_atime_nsec = 0;
+                    (*stat_ptr).st_mtime = 0;
+                    (*stat_ptr).st_mtime_nsec = 0;
+                    (*stat_ptr).st_ctime = 0;
+                    (*stat_ptr).st_ctime_nsec = 0;
 
-                    *stat
+                    stat.assume_init()
                 }
                 FileType::Directory { inode, .. } => {
-                    (*stat).st_dev = Self::DEV;
-                    (*stat).st_ino = *inode;
-                    (*stat).st_mode = libc::S_IFDIR // 555
+                    (*stat_ptr).st_dev = Self::DEV;
+                    (*stat_ptr).st_ino = *inode;
+                    (*stat_ptr).st_mode = libc::S_IFDIR // 555
                                     | libc::S_IXUSR
                                     | libc::S_IRUSR
                                     | libc::S_IXGRP
                                     | libc::S_IRGRP
                                     | libc::S_IXOTH
                                     | libc::S_IROTH;
-                    (*stat).st_nlink = 1;
-                    (*stat).st_uid = libc::getuid();
-                    (*stat).st_gid = libc::getgid();
-                    (*stat).st_rdev = 0;
-                    (*stat).st_size = 1;
-                    (*stat).st_blksize = 4096;
-                    (*stat).st_blocks = 0;
-                    (*stat).st_atime = 0;
-                    (*stat).st_atime_nsec = 0;
-                    (*stat).st_mtime = 0;
-                    (*stat).st_mtime_nsec = 0;
-                    (*stat).st_ctime = 0;
-                    (*stat).st_ctime_nsec = 0;
+                    (*stat_ptr).st_nlink = 1;
+                    (*stat_ptr).st_uid = libc::getuid();
+                    (*stat_ptr).st_gid = libc::getgid();
+                    (*stat_ptr).st_rdev = 0;
+                    (*stat_ptr).st_size = 1;
+                    (*stat_ptr).st_blksize = 4096;
+                    (*stat_ptr).st_blocks = 0;
+                    (*stat_ptr).st_atime = 0;
+                    (*stat_ptr).st_atime_nsec = 0;
+                    (*stat_ptr).st_mtime = 0;
+                    (*stat_ptr).st_mtime_nsec = 0;
+                    (*stat_ptr).st_ctime = 0;
+                    (*stat_ptr).st_ctime_nsec = 0;
 
-                    *stat
+                    stat.assume_init()
                 }
             }
         }
@@ -195,25 +197,15 @@ impl<'a> Fs<'a> {
         }
     }
 
-    // TODO: working directory
     pub fn open_at(&mut self, path: &Vec<&OsStr>) -> Option<i32> {
         match self.get_file_type_from_path(path) {
-            Some(file_type) => match file_type {
-                FileType::File { .. } => {
-                    let fd = unsafe { libc::dup(0) };
+            Some(file_type) => {
+                let fd = unsafe { libc::dup(0) };
 
-                    self.fd_map.insert(fd, file_type);
+                self.fd_map.insert(fd, file_type);
 
-                    Some(fd)
-                }
-                FileType::Directory { .. } => {
-                    let fd = unsafe { libc::dup(0) };
-
-                    self.fd_map.insert(fd, file_type);
-
-                    Some(fd)
-                }
-            },
+                Some(fd)
+            }
             None => None,
         }
     }
@@ -240,10 +232,10 @@ impl<'a> Fs<'a> {
         }
     }
 
-    pub fn close(&mut self, fd: i32) -> Option<i32> {
+    pub fn close(&mut self, fd: i32) -> i32 {
         self.fd_map.remove(&fd);
 
-        Some(fd)
+        0
     }
 
     pub fn stat(&self, path: &Vec<&OsStr>, stat: *mut libc::stat) -> Option<i32> {
@@ -312,7 +304,6 @@ impl<'a> Fs<'a> {
                 let inode = self.get_inode_from_path(&full_path);
                 let mut buf = [0; 256];
 
-                // dbg!(&full_path);
                 full_path
                     .last()
                     .unwrap()
@@ -338,8 +329,8 @@ impl<'a> Fs<'a> {
         }
     }
 
-    pub fn closedir(&mut self, fd: i32) -> Option<i32> {
-        self.close(fd)
+    pub fn closedir(&mut self, dir: &FsDir) -> i32 {
+        self.close(dir.fd)
     }
 
     pub fn opendir(&mut self, path: &Vec<&OsStr>) -> Option<FsDir> {
@@ -397,8 +388,6 @@ mod test {
         builder.push(&fuga, &[10, 11, 12]);
 
         let fs = Fs::new(builder);
-
-        fs.entries();
 
         let mut hasher = FxHasher::default();
         ls.hash(&mut hasher);

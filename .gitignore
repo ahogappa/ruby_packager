@@ -15,3 +15,4 @@ test*
 hoge*
 a.out
 .DS_Store
+tmp*
